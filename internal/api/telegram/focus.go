@@ -28,7 +28,6 @@ const (
 	msgFocusQuality    = "How was your focus quality? Please select a value between 1 and 10."
 	msgSessionFinished = "✅ *Your focus session has finished!*"
 
-	// Additional text messages
 	msgInvalidRating      = "Invalid rating. Please send a number between 1 and 10."
 	msgRatingOutOfRange   = "Rating must be between 1 and 10."
 	msgThankRating        = "Thank you for rating your focus quality!"
