@@ -57,6 +57,14 @@ func GetCode(err error) Code {
 	return Internal
 }
 
+func GetMessage(err error) string {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		return appErr.Message
+	}
+	return err.Error()
+}
+
 type ErrorBuilder struct {
 	code    Code
 	message string

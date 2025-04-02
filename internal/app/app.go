@@ -1,6 +1,7 @@
 package app
 
 import (
+	"attune/internal/api"
 	"attune/internal/api/telegram"
 	"attune/internal/config"
 	"attune/internal/service"
@@ -37,12 +38,23 @@ func MustRun() {
 	customCache := cache.NewCache()
 	pgxTx := transactor.NewPgxTransactor(pgConn)
 
-	focusSessionWorker := service.NewFocusWorker(storages, slog)
-	focusSessionManager := service.NewFocusSessionManager(storages, focusSessionWorker, customCache)
+	apiCh := make(chan api.Trigger)
+	stopCh := make(chan struct{})
 
+	focusSessionManager := service.NewFocusSessionManager(storages, customCache, apiCh)
 	services := service.NewServices(storages, focusSessionManager, pgxTx, slog, customCache)
 
-	telegramAPI := telegram.NewTelegramAPI(cfg.Telegram.Token, "base_url", cfg.Telegram.PollTimeout, *services, slog, customCache)
+	telegramAPI := telegram.NewTelegramAPI(cfg.Telegram.Token, "base_url", cfg.Telegram.PollTimeout, *services, slog, customCache, apiCh)
+
+	go func() {
+		cacheCfg := cache.StartCacheWorkerConfig{
+			Interval: time.Minute,
+			StopCh:   stopCh,
+			Cache:    customCache,
+		}
+
+		cache.StartCacheWorker(context.Background(), cacheCfg)
+	}()
 
 	go func() {
 		if err := telegramAPI.Start(ctx); err != nil {

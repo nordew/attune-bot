@@ -41,6 +41,7 @@ func (s *focusSessionStorage) Create(ctx context.Context, session models.FocusSe
 			"id",
 			"user_id",
 			"quality",
+			"status",
 			"started_at",
 			"ended_at",
 			"created_at",
@@ -50,6 +51,7 @@ func (s *focusSessionStorage) Create(ctx context.Context, session models.FocusSe
 			session.ID,
 			session.UserID,
 			session.Quality,
+			session.Status,
 			session.StartedAt,
 			session.EndedAt,
 			session.CreatedAt,
@@ -77,6 +79,7 @@ func (s *focusSessionStorage) List(ctx context.Context, filter ListFocusSessionF
 			"id",
 			"user_id",
 			"quality",
+			"status",
 			"started_at",
 			"ended_at",
 			"created_at",
@@ -110,6 +113,7 @@ func (s *focusSessionStorage) List(ctx context.Context, filter ListFocusSessionF
 			&session.ID,
 			&session.UserID,
 			&session.Quality,
+			&session.Status,
 			&session.StartedAt,
 			&session.EndedAt,
 			&session.CreatedAt,
@@ -133,6 +137,7 @@ func (s *focusSessionStorage) Update(ctx context.Context, session models.FocusSe
 	query, args, err := s.builder.
 		Update(focusSessionsTableName).
 		Set("quality", session.Quality).
+		Set("status", session.Status).
 		Set("started_at", session.StartedAt).
 		Set("ended_at", session.EndedAt).
 		Set("updated_at", time.Now()).
