@@ -16,17 +16,25 @@ const (
 		"Ready to start your journey? 🚀"
 )
 
-func RegisterStartCommand(api *API) {
+var (
+	ErrMsgListUsers   = "failed to list users"
+	ErrMsgCreateUser  = "failed to create user"
+	ErrMsgSendWelcome = "failed to send welcome message"
+)
+
+func registerStartCommand(api *API) {
 	api.bot.Handle("/start", func(c tb.Context) error {
-		return api.handleStart(c)
+		err := api.handleStart(c)
+		if err != nil {
+			api.logger.Error(context.Background(), "Error handling /start command", err, "user", c.Sender().ID)
+		}
+
+		return err
 	})
 }
 
 func (a *API) handleStart(c tb.Context) error {
-	const op = "API.handleStart"
 	ctx := context.Background()
-
-	log := a.logger.With("operation", op, "user", c.Sender().ID)
 
 	vendorID := strconv.FormatInt(c.Sender().ID, 10)
 
@@ -34,7 +42,7 @@ func (a *API) handleStart(c tb.Context) error {
 		VendorID: vendorID,
 	})
 	if err != nil && !apperrors.IsCode(err, apperrors.NotFound) {
-		return apperrors.NewInternal().WithDescriptionAndCause("failed to list users", err)
+		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgListUsers, err)
 	}
 
 	if err != nil || len(users) == 0 {
@@ -44,7 +52,7 @@ func (a *API) handleStart(c tb.Context) error {
 			Name:       c.Sender().FirstName,
 		}
 		if err := a.services.UserService.Create(ctx, createReq); err != nil {
-			return apperrors.NewInternal().WithDescriptionAndCause("failed to create user", err)
+			return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgCreateUser, err)
 		}
 	}
 
@@ -52,9 +60,8 @@ func (a *API) handleStart(c tb.Context) error {
 		ParseMode: tb.ModeMarkdown,
 	}
 	if _, err := a.bot.Send(c.Sender(), msgWelcome, sendOpts); err != nil {
-		log.Error(ctx, "failed to send welcome message", err)
-		return apperrors.NewInternal().WithDescriptionAndCause("failed to send welcome message", err)
+		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgSendWelcome, err)
 	}
 
-	return nil
+	return a.createFocusSession(c)
 }

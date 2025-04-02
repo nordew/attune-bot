@@ -1,32 +1,59 @@
 package cache
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
+
+type cachedItem struct {
+	value      any
+	expiration time.Time
+}
 
 type inMemoryCache struct {
 	mu    sync.RWMutex
-	items map[string]any
+	items map[string]cachedItem
 }
 
 func NewCache() Cache {
 	return &inMemoryCache{
-		items: make(map[string]any),
+		items: make(map[string]cachedItem),
 	}
 }
 
 func (c *inMemoryCache) Get(key string) (any, bool) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	item, ok := c.items[key]
+	c.mu.RUnlock()
 
-	val, ok := c.items[key]
+	if !ok {
+		return nil, false
+	}
 
-	return val, ok
+	if !item.expiration.IsZero() && time.Now().After(item.expiration) {
+		c.Delete(key)
+		return nil, false
+	}
+
+	return item.value, true
 }
 
 func (c *inMemoryCache) Set(key string, value any) {
+	c.SetWithTTL(key, value, 0)
+}
+
+func (c *inMemoryCache) SetWithTTL(key string, value any, ttl time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.items[key] = value
+	var expiration time.Time
+	if ttl > 0 {
+		expiration = time.Now().Add(ttl)
+	}
+	c.items[key] = cachedItem{
+		value:      value,
+		expiration: expiration,
+	}
 }
 
 func (c *inMemoryCache) Delete(key string) {
@@ -39,6 +66,6 @@ func (c *inMemoryCache) Delete(key string) {
 func (c *inMemoryCache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
-	c.items = make(map[string]any)
+
+	c.items = make(map[string]cachedItem)
 }

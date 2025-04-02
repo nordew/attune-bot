@@ -4,10 +4,24 @@ import (
 	"attune/internal/dto"
 	"attune/internal/models"
 	"attune/internal/storage"
+	"attune/pkg/apperrors"
 	"attune/pkg/cache"
 	"attune/pkg/logger"
 	"attune/pkg/transactor"
 	"context"
+	"fmt"
+	"time"
+)
+
+var (
+	errMsgListUsers         = "failed to list users for VendorID %s"
+	errMsgNoUserFound       = "no user found for VendorID %s"
+	errMsgCreateSession     = "failed to create focus session"
+	errMsgTransactionFail   = "transaction failed while starting focus session"
+	errMsgListSessions      = "failed to list focus sessions"
+	errMsgUpdateInvalidType = "invalid update request type"
+	errMsgUpdateFailure     = "failed to update focus session with type %s"
+	errMsgDeleteSession     = "failed to delete focus session with id %s"
 )
 
 type FocusSessionService interface {
@@ -49,94 +63,98 @@ func (s *focusSessionService) Create(ctx context.Context, input dto.CreateFocusS
 		VendorID: input.VendorID,
 	})
 	if err != nil {
-		log.Error(ctx, "failed to list users", err)
+		errMsg := fmt.Sprintf(errMsgListUsers, input.VendorID)
+		log.Error(ctx, errMsg, err)
 		return err
 	}
 	user := users[0]
 
-	focusSession, err := models.NewFocusSession(
-		user.ID,
-		input.Duration,
-	)
+	focusSession, err := models.NewFocusSession(user.ID, input.Duration)
 	if err != nil {
-		log.Error(ctx, "failed to create focus session", err)
+		log.Error(ctx, errMsgCreateSession, err)
 		return err
 	}
 
-	err = s.transactor.Transact(ctx, func(ctx context.Context) error {
-		if err := s.storages.FocusSession.Create(ctx, focusSession); err != nil {
-			log.Error(ctx, "failed to create focus session in storage", err)
-			return err
-		}
-
-		s.focusSessionManager.Start(focusSession)
-
-		return nil
-	})
-	if err != nil {
-		return err
+	if input.VendorID != "" {
+		focusSession.VendorID = input.VendorID
 	}
+
+	if err := s.storages.FocusSession.Create(ctx, focusSession); err != nil {
+		log.Error(ctx, errMsgCreateSession, err)
+		return apperrors.NewInternal().WithDescriptionAndCause(errMsgCreateSession, err)
+	}
+
+	go s.focusSessionManager.Start(focusSession, input.Duration)
 
 	return nil
 }
 
 func (s *focusSessionService) List(ctx context.Context, filter storage.ListFocusSessionFilter) ([]models.FocusSession, int64, error) {
 	const op = "focusSessionService.List"
-
 	log := s.logger.With("operation", op)
 
 	focusSessions, count, err := s.storages.FocusSession.List(ctx, filter)
 	if err != nil {
-		log.Error(ctx, "failed to list focus sessions", err)
-		return nil, 0, err
+		log.Error(ctx, errMsgListSessions, err)
+		return nil, 0, apperrors.NewInternal().WithDescriptionAndCause(errMsgListSessions, err)
 	}
 
 	return focusSessions, count, nil
 }
 
 func (s *focusSessionService) Update(ctx context.Context, input dto.UpdateFocusRequest) error {
-	const op = "focusSessionService.Update"
+	log := s.logger.With("operation", "focusSessionService.Update")
 
-	log := s.logger.With("operation", op)
-
-	err := s.transactor.Transact(ctx, func(ctx context.Context) error {
-		if input.Type == dto.UpdateFocusRequestTypePause {
-			if err := s.focusSessionManager.Pause(input.ID); err != nil {
-				log.Error(ctx, "failed to pause focus session", err)
-				return err
-			}
-		}
-		if input.Type == dto.UpdateFocusRequestTypeResume {
-			if err := s.focusSessionManager.Resume(input.ID); err != nil {
-				log.Error(ctx, "failed to resume focus session", err)
-				return err
-			}
-		}
-		if input.Type == dto.UpdateFocusRequestTypeStop {
-			if err := s.focusSessionManager.Stop(input.ID); err != nil {
-				log.Error(ctx, "failed to stop focus session", err)
-				return err
-			}
-		}
-
-		return nil
+	users, _, err := s.storages.User.List(ctx, storage.ListUserFilter{
+		VendorID: input.VendorID,
 	})
 	if err != nil {
-		return err
+		return apperrors.NewInternal().WithDescriptionAndCause(fmt.Sprintf(errMsgListUsers, input.VendorID), err)
 	}
+	user := users[0]
 
-	return nil
+	return s.transactor.Transact(ctx, func(ctx context.Context) error {
+		switch input.Type {
+		case dto.UpdateFocusRequestTypePause:
+			return s.focusSessionManager.Pause(user.ID)
+		case dto.UpdateFocusRequestTypeResume:
+			return s.focusSessionManager.Resume(user.ID)
+		case dto.UpdateFocusRequestTypeStop:
+			return s.focusSessionManager.Stop(user.ID)
+		case dto.UpdateFocusRequestTypeQuality:
+			sessions, _, err := s.storages.FocusSession.List(ctx, storage.ListFocusSessionFilter{
+				UserID: user.ID,
+			})
+			if err != nil {
+				log.Error(ctx, errMsgListSessions, err)
+				return apperrors.NewInternal().WithDescriptionAndCause(fmt.Sprintf(errMsgListSessions, user.ID), err)
+			}
+
+			session := sessions[0]
+			session.Quality = input.Quality
+			session.Status = input.Status
+			session.UpdatedAt = time.Now()
+			session.EndedAt = time.Now()
+			if err := s.storages.FocusSession.Update(ctx, session); err != nil {
+				log.Error(ctx, errMsgUpdateFailure, err)
+				return apperrors.NewInternal().WithDescriptionAndCause(fmt.Sprintf(errMsgUpdateFailure, input.Type), err)
+			}
+
+			return nil
+		default:
+			log.Error(ctx, errMsgUpdateInvalidType)
+			return apperrors.NewBadRequest().WithDescription(errMsgUpdateInvalidType)
+		}
+	})
 }
 
 func (s *focusSessionService) Delete(ctx context.Context, id string) error {
 	const op = "focusSessionService.Delete"
-
 	log := s.logger.With("operation", op)
 
-	err := s.storages.FocusSession.Delete(ctx, id)
-	if err != nil {
-		log.Error(ctx, "failed to delete focus session", err)
-		return err
+	if err := s.storages.FocusSession.Delete(ctx, id); err != nil {
+		log.Error(ctx, errMsgDeleteSession, err)
+		return apperrors.NewInternal().WithDescriptionAndCause(fmt.Sprintf(errMsgDeleteSession, id), err)
 	}
 
 	return nil

@@ -1,13 +1,17 @@
 package dto
 
-import "time"
+import (
+	"attune/internal/models"
+	"time"
+)
 
 type UpdateFocusRequestType string
 
 const (
-	UpdateFocusRequestTypePause  UpdateFocusRequestType = "pause"
-	UpdateFocusRequestTypeResume UpdateFocusRequestType = "resume"
-	UpdateFocusRequestTypeStop   UpdateFocusRequestType = "stop"
+	UpdateFocusRequestTypePause   UpdateFocusRequestType = "Pause"
+	UpdateFocusRequestTypeResume  UpdateFocusRequestType = "Resume"
+	UpdateFocusRequestTypeStop    UpdateFocusRequestType = "Stop"
+	UpdateFocusRequestTypeQuality UpdateFocusRequestType = "Quality"
 )
 
 type CreateFocusSessionRequest struct {
@@ -16,7 +20,8 @@ type CreateFocusSessionRequest struct {
 }
 
 type UpdateFocusRequest struct {
-	ID      string                 `json:"id"`
-	Type    UpdateFocusRequestType `json:"type"`
-	Quality int                    `json:"quality"`
+	VendorID string                    `json:"id"`
+	Type     UpdateFocusRequestType    `json:"type"`
+	Status   models.FocusSessionStatus `json:"status"`
+	Quality  int                       `json:"quality"`
 }
