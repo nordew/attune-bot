@@ -4,7 +4,7 @@ RUN apk update && apk add --no-cache git
 
 WORKDIR /src
 
-COPY migrations/ ./migrations/
+COPY ./migrations/ ./migrations/
 COPY go.mod go.sum ./
 RUN go mod download
 
