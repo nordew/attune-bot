@@ -1,6 +1,14 @@
 package app
 
 import (
+	"context"
+	"database/sql"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"attune/internal/api"
 	"attune/internal/api/telegram"
 	"attune/internal/config"
@@ -10,13 +18,6 @@ import (
 	"attune/pkg/db"
 	"attune/pkg/logger"
 	"attune/pkg/transactor"
-	"context"
-	"database/sql"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -35,22 +36,31 @@ func MustRun() {
 	slog := logger.NewSLogger()
 	storages := storage.NewStorages(pgConn)
 
-	customCache := cache.NewCache()
+	focusSessionManagerCache := cache.NewCache()
+	servicesCache := cache.NewCache()
+	telegramCache := cache.NewCache()
+
 	pgxTx := transactor.NewPgxTransactor(pgConn)
 
 	apiCh := make(chan api.Trigger)
 	stopCh := make(chan struct{})
 
-	focusSessionManager := service.NewFocusSessionManager(storages, customCache, apiCh)
-	services := service.NewServices(storages, focusSessionManager, pgxTx, slog, customCache)
+	focusSessionManager := service.NewFocusSessionManager(storages, focusSessionManagerCache, apiCh)
+	services := service.NewServices(storages, focusSessionManager, pgxTx, slog, servicesCache)
 
-	telegramAPI := telegram.NewTelegramAPI(cfg.Telegram.Token, "base_url", cfg.Telegram.PollTimeout, *services, slog, customCache, apiCh)
+	telegramAPI := telegram.NewTelegramAPI(cfg.Telegram.Token, "base_url", cfg.Telegram.PollTimeout, *services, slog, telegramCache, apiCh)
 
 	go func() {
+		caches := []cache.Cache{
+			focusSessionManagerCache,
+			servicesCache,
+			telegramCache,
+		}
+
 		cacheCfg := cache.StartCacheWorkerConfig{
 			Interval: time.Minute,
 			StopCh:   stopCh,
-			Cache:    customCache,
+			Caches:   caches,
 		}
 
 		cache.StartCacheWorker(context.Background(), cacheCfg)
@@ -70,6 +80,8 @@ func MustRun() {
 
 	_, shutdownCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer shutdownCancel()
+
+	focusSessionManager.GracefulShutdown()
 
 	pgConn.Close()
 	log.Print("Postgres connection closed")

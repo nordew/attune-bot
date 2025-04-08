@@ -1,11 +1,12 @@
 package telegram
 
 import (
+	"context"
+	"strconv"
+
 	"attune/internal/dto"
 	"attune/internal/storage"
 	"attune/pkg/apperrors"
-	"context"
-	"strconv"
 
 	tb "gopkg.in/telebot.v4"
 )
@@ -14,12 +15,19 @@ const (
 	msgWelcome = "👋 *Welcome to Attune!* ✨\n\n" +
 		"_I'm here to help you track your mood 😊 and stay focused 🎯._\n\n" +
 		"Ready to start your journey? 🚀"
+
+	msgRoadmap = "🚀 *Roadmap* 🚀\n\n" +
+		"Stay tuned! We'll soon have:\n" +
+		"• Day quality charts and history to track your daily well-being 📊\n" +
+		"• Enhanced focus sessions to keep you on track 🎯\n" +
+		"• Personalized AI-powered journaling for deeper insights 🤖📝"
 )
 
 var (
 	ErrMsgListUsers   = "failed to list users"
 	ErrMsgCreateUser  = "failed to create user"
 	ErrMsgSendWelcome = "failed to send welcome message"
+	ErrMsgSendRoadmap = "failed to send roadmap message"
 )
 
 func registerStartCommand(api *API) {
@@ -61,6 +69,10 @@ func (a *API) handleStart(c tb.Context) error {
 	}
 	if _, err := a.bot.Send(c.Sender(), msgWelcome, sendOpts); err != nil {
 		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgSendWelcome, err)
+	}
+
+	if _, err := a.bot.Send(c.Sender(), msgRoadmap, sendOpts); err != nil {
+		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgSendRoadmap, err)
 	}
 
 	return a.createFocusSession(c)

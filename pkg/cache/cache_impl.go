@@ -38,6 +38,17 @@ func (c *inMemoryCache) Get(key string) (any, bool) {
 	return item.value, true
 }
 
+func (c *inMemoryCache) Keys() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	keys := make([]string, 0, len(c.items))
+	for key := range c.items {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func (c *inMemoryCache) Set(key string, value any) {
 	c.SetWithTTL(key, value, 0)
 }
