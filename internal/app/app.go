@@ -31,7 +31,9 @@ func MustRun() {
 	cfg := config.MustLoad()
 	pgConn, dsn := db.MustConnect(ctx, cfg.Postgres)
 
-	migrate(dsn)
+	if cfg.APP.Migrate {
+		migrate(dsn)
+	}
 
 	slog := logger.NewSLogger()
 	storages := storage.NewStorages(pgConn)

@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	APP      APPConfig
 	Postgres PostgresConfig
 	HTTP     HTTPConfig
 	Telegram TelegramConfig
@@ -22,6 +23,10 @@ type PostgresConfig struct {
 	Password string `env:"POSTGRES_PASSWORD"`
 	SSLMode  string `env:"POSTGRES_SSLMODE" envDefault:"disable"`
 	Timeout  string `env:"POSTGRES_TIMEOUT" envDefault:"5s"`
+}
+
+type APPConfig struct {
+	Migrate bool `env:"APP_MIGRATE" envDefault:"false"`
 }
 
 type HTTPConfig struct {
