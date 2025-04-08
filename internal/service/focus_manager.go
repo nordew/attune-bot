@@ -1,13 +1,15 @@
 package service
 
 import (
+	"log"
+	"sync"
+	"time"
+
 	"attune/internal/api"
 	"attune/internal/models"
 	"attune/internal/storage"
 	"attune/pkg/apperrors"
 	"attune/pkg/cache"
-	"sync"
-	"time"
 )
 
 const (
@@ -19,6 +21,7 @@ type FocusSessionManager interface {
 	Pause(userID string) error
 	Resume(userID string) error
 	Stop(userID string) error
+	GracefulShutdown()
 }
 
 type focusSessionManager struct {
@@ -171,4 +174,13 @@ func (m *focusSessionManager) completeSession(data *sessionData, sessionStatus m
 	}
 
 	go m.cache.Delete(data.session.UserID)
+}
+
+func (m *focusSessionManager) GracefulShutdown() {
+	keys := m.cache.Keys()
+	for _, userID := range keys {
+		if err := m.Stop(userID); err != nil {
+			log.Printf("failed to stop session for user %s: %v", userID, err)
+		}
+	}
 }

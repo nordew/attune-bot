@@ -7,7 +7,7 @@ import (
 )
 
 type StartCacheWorkerConfig struct {
-	Cache    Cache
+	Caches   []Cache
 	Interval time.Duration
 	StopCh   <-chan struct{}
 }
@@ -24,8 +24,11 @@ func StartCacheWorker(
 		select {
 		case <-ctx.Done():
 			log.Println("Cache worker context done")
+			return
 		case <-ticker.C:
-			cleanCache(cfg.Cache)
+			for _, cacheInst := range cfg.Caches {
+				cleanCache(cacheInst)
+			}
 		case <-cfg.StopCh:
 			log.Println("Cache worker stopped")
 			return
@@ -33,14 +36,13 @@ func StartCacheWorker(
 	}
 }
 
-func cleanCache(cache Cache) {
-	memCache, ok := cache.(*inMemoryCache)
+func cleanCache(cacheInstance Cache) {
+	memCache, ok := cacheInstance.(*inMemoryCache)
 	if !ok {
 		return
 	}
 
 	now := time.Now()
-
 	memCache.mu.Lock()
 	defer memCache.mu.Unlock()
 
