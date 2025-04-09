@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"attune/pkg/apperrors"
+
 	tb "gopkg.in/telebot.v4"
 )
 
@@ -12,11 +13,8 @@ const (
 	keyFocusCustom = "focus_custom"
 )
 
-var (
-	msgFocusSessionPrompt = "🔔 *Select your focus session duration:*"
-)
+var msgFocusSessionPrompt = "🔔 *Select your focus session duration:*"
 
-// SendFocusSessionMenu sends a menu to the user with options for focus session durations and a custom option
 func (a *API) SendFocusSessionMenu(c tb.Context, customPrompt string) error {
 	btn15 := tb.InlineButton{Unique: keyFocus15, Text: "15 min"}
 	btn30 := tb.InlineButton{Unique: keyFocus30, Text: "30 min"}

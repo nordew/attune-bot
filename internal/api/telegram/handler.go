@@ -1,14 +1,15 @@
 package telegram
 
 import (
+	"context"
+	"fmt"
+	"time"
+
 	"attune/internal/api"
 	"attune/internal/models"
 	"attune/internal/service"
 	"attune/pkg/cache"
 	"attune/pkg/logger"
-	"context"
-	"fmt"
-	"time"
 
 	tb "gopkg.in/telebot.v4"
 )
@@ -20,12 +21,6 @@ var (
 	ErrSendErrorMessage           = "failed to send error message"
 	ErrSendErrorMessageWithMarkup = "failed to send error message with markup"
 )
-
-type sendErrorMsgParams struct {
-	C      tb.Context
-	ErrMsg string
-	Markup *tb.ReplyMarkup
-}
 
 type APITelegramMessagesConfig struct {
 	WelcomeMsg string
@@ -124,16 +119,4 @@ func (a *API) SendMessage(_ context.Context, message models.Message) error {
 		return fmt.Errorf("%s: %w", ErrSendMessage, err)
 	}
 	return nil
-}
-
-func (a *API) sendErrorMsg(_ context.Context, input sendErrorMsgParams) {
-	opts := &tb.SendOptions{ParseMode: tb.ModeMarkdown}
-	if _, err := a.bot.Send(input.C.Sender(), input.ErrMsg, opts); err != nil {
-		return
-	}
-	if input.Markup != nil {
-		if _, err := a.bot.Send(input.C.Sender(), "Please try again.", input.Markup); err != nil {
-			return
-		}
-	}
 }

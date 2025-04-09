@@ -1,12 +1,13 @@
 package telegram
 
 import (
-	"attune/internal/dto"
-	"attune/internal/models"
-	"attune/pkg/apperrors"
 	"context"
 	"strconv"
 	"time"
+
+	"attune/internal/dto"
+	"attune/internal/models"
+	"attune/pkg/apperrors"
 
 	tb "gopkg.in/telebot.v4"
 )
@@ -177,33 +178,22 @@ func (a *API) startFocusSession(c tb.Context, duration time.Duration) error {
 	}
 
 	if err := a.services.FocusSessionService.Create(context.Background(), req); err != nil {
-		if apperrors.IsCode(err, apperrors.BadRequest) {
-
-			errorMsg := apperrors.GetMessage(err) + "\nPlease choose a new duration:"
-			if err := a.SendFocusSessionMenu(c, errorMsg); err != nil {
-				return err
-			}
-		}
-
 		return err
 	}
-	controlMarkup := &tb.ReplyMarkup{
-		InlineKeyboard: [][]tb.InlineButton{
-			{
-				{Unique: keyFocusPause, Text: "Pause"},
-				{Unique: keyFocusResume, Text: "Resume"},
-				{Unique: keyFocusStop, Text: "Stop"},
-			},
-		},
-	}
-	opts := &tb.SendOptions{
-		ParseMode:   tb.ModeMarkdown,
-		ReplyMarkup: controlMarkup,
-	}
+
 	confirmationMsg := msgSessionStarted + "`" + duration.String() + "`"
-	if _, err := a.bot.Send(c.Sender(), confirmationMsg, opts); err != nil {
-		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgFocusSessionConfirmation, err)
+	opts := &tb.SendOptions{ParseMode: tb.ModeMarkdown}
+
+	sentMsg, err := a.bot.Send(c.Sender(), confirmationMsg, opts)
+	if err != nil {
+		return err
 	}
+
+	if err := a.editFocusSessionMessage(sentMsg, focusStateStarted, false); err != nil {
+		return err
+	}
+
+	go a.cache.Set("FocusMsg:"+vendorID, sentMsg)
 
 	return nil
 }
@@ -211,7 +201,6 @@ func (a *API) startFocusSession(c tb.Context, duration time.Duration) error {
 func (a *API) updateFocusSession(
 	c tb.Context,
 	updateType dto.UpdateFocusRequestType,
-	successMsg string,
 ) error {
 	vendorID := strconv.FormatInt(c.Sender().ID, 10)
 
@@ -223,24 +212,47 @@ func (a *API) updateFocusSession(
 		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgFocusSessionUpdate, err)
 	}
 
-	opts := &tb.SendOptions{ParseMode: tb.ModeMarkdown}
-	if _, err := a.bot.Send(c.Sender(), successMsg, opts); err != nil {
-		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgSendConfirmation, err)
-	}
-
 	return nil
 }
 
 func (a *API) pauseFocusSession(c tb.Context) error {
-	return a.updateFocusSession(c, dto.UpdateFocusRequestTypePause, msgSessionPaused)
+	if err := a.updateFocusSession(c, dto.UpdateFocusRequestTypePause); err != nil {
+		return err
+	}
+
+	userID := strconv.FormatInt(c.Sender().ID, 10)
+	rawMsg, ok := a.cache.Get("FocusMsg:" + userID)
+	if !ok {
+		return nil
+	}
+	msg, ok := rawMsg.(*tb.Message)
+	if !ok {
+		return nil
+	}
+
+	return a.editFocusSessionMessage(msg, focusStatePaused, true)
 }
 
 func (a *API) resumeFocusSession(c tb.Context) error {
-	return a.updateFocusSession(c, dto.UpdateFocusRequestTypeResume, msgSessionResumed)
+	if err := a.updateFocusSession(c, dto.UpdateFocusRequestTypeResume); err != nil {
+		return err
+	}
+
+	userID := strconv.FormatInt(c.Sender().ID, 10)
+	rawMsg, ok := a.cache.Get("FocusMsg:" + userID)
+	if !ok {
+		return nil
+	}
+	msg, ok := rawMsg.(*tb.Message)
+	if !ok {
+		return nil
+	}
+
+	return a.editFocusSessionMessage(msg, focusStateResumed, false)
 }
 
 func (a *API) stopFocusSession(c tb.Context) error {
-	return a.updateFocusSession(c, dto.UpdateFocusRequestTypeStop, msgSessionStopped)
+	return a.updateFocusSession(c, dto.UpdateFocusRequestTypeStop)
 }
 
 func (a *API) finishFocusSession(

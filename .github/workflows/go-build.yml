@@ -3,7 +3,7 @@ name: Golang Build & Test Pipeline
 on:
   pull_request:
     branches:
-      - main
+      - maint 
 
 jobs:
   build:

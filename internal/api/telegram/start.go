@@ -15,8 +15,8 @@ const (
 	msgWelcome = "👋 *Welcome to Attune!* ✨\n\n" +
 		"_I'm here to help you track your mood 😊 and stay focused 🎯._\n\n" +
 		"Ready to start your journey? 🚀"
-
-	msgRoadmap = "🚀 *Roadmap* 🚀\n\n" +
+	msgWelcomeBack = "👋 *Welcome back to Attune!* ✨\n\n"
+	msgRoadmap     = "🚀 *Roadmap* 🚀\n\n" +
 		"Stay tuned! We'll soon have:\n" +
 		"• Day quality charts and history to track your daily well-being 📊\n" +
 		"• Enhanced focus sessions to keep you on track 🎯\n" +
@@ -36,7 +36,6 @@ func registerStartCommand(api *API) {
 		if err != nil {
 			api.logger.Error(context.Background(), "Error handling /start command", err, "user", c.Sender().ID)
 		}
-
 		return err
 	})
 }
@@ -46,33 +45,37 @@ func (a *API) handleStart(c tb.Context) error {
 
 	vendorID := strconv.FormatInt(c.Sender().ID, 10)
 
-	users, _, err := a.services.UserService.List(ctx, storage.ListUserFilter{
-		VendorID: vendorID,
-	})
+	_, userCount, err := a.services.UserService.List(ctx, storage.ListUserFilter{VendorID: vendorID})
 	if err != nil && !apperrors.IsCode(err, apperrors.NotFound) {
 		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgListUsers, err)
+	} else if err == nil && userCount > 0 {
+		return a.welcomeBack(c)
 	}
 
-	if err != nil || len(users) == 0 {
-		createReq := dto.CreateUserRequest{
-			VendorID:   vendorID,
-			VendorType: "telegram",
-			Name:       c.Sender().FirstName,
-		}
-		if err := a.services.UserService.Create(ctx, createReq); err != nil {
-			return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgCreateUser, err)
-		}
+	createReq := dto.CreateUserRequest{
+		VendorID:   vendorID,
+		VendorType: "telegram",
+		Name:       c.Sender().FirstName,
 	}
-
-	sendOpts := &tb.SendOptions{
-		ParseMode: tb.ModeMarkdown,
+	if err := a.services.UserService.Create(ctx, createReq); err != nil {
+		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgCreateUser, err)
 	}
+	sendOpts := &tb.SendOptions{ParseMode: tb.ModeMarkdown}
 	if _, err := a.bot.Send(c.Sender(), msgWelcome, sendOpts); err != nil {
 		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgSendWelcome, err)
 	}
 
 	if _, err := a.bot.Send(c.Sender(), msgRoadmap, sendOpts); err != nil {
 		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgSendRoadmap, err)
+	}
+
+	return a.createFocusSession(c)
+}
+
+func (a *API) welcomeBack(c tb.Context) error {
+	sendOpts := &tb.SendOptions{ParseMode: tb.ModeMarkdown}
+	if _, err := a.bot.Send(c.Sender(), msgWelcomeBack, sendOpts); err != nil {
+		return apperrors.NewInternal().WithDescriptionAndCause(ErrMsgSendWelcome, err)
 	}
 
 	return a.createFocusSession(c)
