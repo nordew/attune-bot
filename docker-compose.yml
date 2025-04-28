@@ -1,21 +1,35 @@
-version: "3.8"
-
 services:
   postgres:
-    image: postgres:17.4
+    image: postgres:17.4-alpine
     container_name: postgres-attune
     restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - attune-network
 
   app:
     build:
@@ -23,16 +37,41 @@ services:
       dockerfile: Dockerfile
     container_name: attune-app
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_SSLMODE=${POSTGRES_SSLMODE}
+      - POSTGRES_TIMEOUT=${POSTGRES_TIMEOUT}
+      - HTTP_PORT=${HTTP_PORT}
+      - APP_MIGRATE=${APP_MIGRATE}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
     ports:
-      - "8080:8080"
+      - "${HTTP_PORT}:${HTTP_PORT}"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./migrations:/app/migrations
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - attune-network
 
 volumes:
   postgres_data:
+    name: attune-postgres-data
 
+networks:
+  attune-network:
+    driver: bridge
